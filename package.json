@@ -1,0 +1,22 @@
+{
+  "name": "rehub-skill",
+  "version": "1.0.0",
+  "description": "AI Agent for daily automatic visits to ReplyHubs website",
+  "main": "index.js",
+  "bin": {
+    "rehub": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test.js"
+  },
+  "keywords": ["ai", "agent", "replyhubs", "skill", "automation"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}
