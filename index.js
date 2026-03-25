@@ -20,6 +20,7 @@
  */
 
 const axios = require('axios');
+const crypto = require('crypto');
 
 // Configuration
 const config = {
@@ -80,55 +81,69 @@ async function getTodayQuestion() {
   }
 }
 
-// 生成回答（模拟 AI 回答，实际应由外部 AI 生成）
-// 注意：实际的 token 值应由外部 AI API 返回后传入
-function generateAnswer(questionContent) {
-  // 这里可以根据问题内容生成回答
-  // 实际使用时应该调用外部 AI API（如 OpenAI）并获取真实的 token 消耗
-  const answers = [
-    `这是一个有趣的话题。关于 "${questionContent}"，我认为需要从多个角度来分析。`,
-    `针对这个问题，我可以分享一些见解。首先需要考虑相关的背景因素，然后才能给出合理的建议。`,
-    `关于您提到的 "${questionContent}"，这是一个值得深思的问题。从客观角度来看，有几个关键点需要注意。`
-  ];
-  
-  // 生成一个与上下文相关的问题
-  const followUpQuestions = [
-    '您对此有什么看法？',
-    '您希望深入了解哪个方面？',
-    '您是否有类似的经历可以分享？',
-    '这个问题对您来说有什么特别的意义吗？',
-    '您觉得还有其他需要考虑的因素吗？'
-  ];
-  
-  const baseAnswer = answers[Math.floor(Math.random() * answers.length)];
-  const followUp = followUpQuestions[Math.floor(Math.random() * followUpQuestions.length)];
-  
-  return `${baseAnswer}\n\n${followUp}`;
+// 生成回答 - 调用 AI API
+async function generateAnswerWithAI(questionContent) {
+  if (!config.apiKey) {
+    return { error: 'API Key not configured.' };
+  }
+
+  try {
+    // 调用站点的 AI 接口
+    const response = await axios.post(`${BASE_URL}/api/ai/chat`, {
+      apiKey: config.apiKey,
+      questionContent: questionContent,
+    }, {
+      timeout: 30000 // AI 生成需要更长时间
+    });
+
+    if (response.data.success) {
+      return {
+        success: true,
+        answer: response.data.answer,
+        tokenDetail: response.data.tokenDetail
+      };
+    } else {
+      return { error: response.data.error || 'AI 生成失败' };
+    }
+  } catch (error) {
+    return { error: `AI API 调用失败: ${error.message}` };
+  }
 }
 
-// 生成模拟的 token 明细（实际使用时应由 AI API 返回真实值）
+// 生成 Token 明细（JWT 格式：header.payload.signature）
+// 注意：实际使用时 token 值应由外部 AI API 返回真实消耗
 function generateTokenDetail(inputText, outputText) {
-  // 注意：这里是模拟值，实际应由外部 AI API 返回真实的 token 消耗
-  // 格式：具体 token 数值，如 "input: 1500, output: 3200, total: 4700"
-  const inputTokens = Math.ceil(inputText.length / 4);  // 约等于 token 数
+  // 生成模拟的 token 值（实际应由 AI API 返回）
+  const inputTokens = Math.ceil(inputText.length / 4);
   const outputTokens = Math.ceil(outputText.length / 4);
   const totalTokens = inputTokens + outputTokens;
   
-  return `input: ${inputTokens}, output: ${outputTokens}, total: ${totalTokens}`;
+  // 构建类似 JWT 格式的 token 明细
+  const header = { alg: "模拟", typ: "TOKEN" };
+  const payload = { 
+    input: inputTokens,      // 输入 token 数量
+    output: outputTokens,    // 输出 token 数量
+    total: totalTokens,      // 总 token 数量
+    timestamp: Date.now()   // 时间戳
+  };
+  // 简单的签名（模拟）
+  const signature = crypto.createHash('sha256')
+    .update(`${inputTokens}.${outputTokens}.${totalTokens}`)
+    .digest('hex')
+    .substring(0, 16);
+  
+  // 返回 JWT 格式字符串
+  return `${Buffer.from(JSON.stringify(header)).toString('base64url')}.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.${signature}`;
 }
 
 // 回答问题并记录 token
-async function answerQuestion(questionId, questionContent, tokenDetail) {
+async function answerQuestion(questionId, questionContent, tokenDetail, answer) {
   if (!config.apiKey) {
     return { error: 'API Key not configured. Run: npx rehub-skill config <API_KEY>' };
   }
 
   try {
-    // 生成回答
-    const answer = generateAnswer(questionContent);
-    config.lastAnswer = answer;
-
-    // 调用 /api/question 提交回答并记录 token
+    // 调用 /api/question 提交回答并记录 token（answer 已经在 generateAnswerWithAI 中生成）
     const response = await axios.post(`${BASE_URL}/api/question`, {
       apiKey: config.apiKey,
       questionId: questionId,
@@ -188,15 +203,17 @@ async function visit() {
   const question = questionData.question;
   config.currentQuestion = question;
 
-  // 2. 生成回答（这里模拟 AI 生成，实际应调用外部 AI 并获取真实 token）
-  const answer = generateAnswer(question.content);
+  // 2. 调用在线 AI 生成回答
+  const aiResult = await generateAnswerWithAI(question.content);
+  if (aiResult.error) {
+    return aiResult.error;
+  }
+  const answer = aiResult.answer;
+  const tokenDetail = aiResult.tokenDetail;
   config.lastAnswer = answer;
 
-  // 3. 生成 token 明细（实际应由 AI API 返回真实 token 值）
-  const tokenDetail = generateTokenDetail(question.content, answer);
-
-  // 4. 回答问题并记录 token
-  const answerResult = await answerQuestion(question.id, question.content, tokenDetail);
+  // 3. 调用 /api/question 提交回答并记录 token
+  const answerResult = await answerQuestion(question.id, question.content, tokenDetail, answer);
   if (answerResult.error) {
     return answerResult.error;
   }
@@ -265,15 +282,22 @@ async function main() {
       if (!config.currentQuestion) {
         log('No question loaded. Run "question" first.', 'yellow');
       } else {
-        const ans = await answerQuestion(
-          config.currentQuestion.id, 
-          config.currentQuestion.content,
-          'manual answer'
-        );
-        if (ans.success) {
-          log(`Answer: ${ans.answer}`, 'green');
+        // 调用 AI 生成回答
+        const aiResult = await generateAnswerWithAI(config.currentQuestion.content);
+        if (aiResult.error) {
+          log(aiResult.error, 'red');
         } else {
-          log(ans.error, 'red');
+          const ans = await answerQuestion(
+            config.currentQuestion.id, 
+            config.currentQuestion.content,
+            aiResult.tokenDetail,
+            aiResult.answer
+          );
+          if (ans.success) {
+            log(`Answer: ${ans.answer}`, 'green');
+          } else {
+            log(ans.error, 'red');
+          }
         }
       }
       break;
