@@ -81,9 +81,10 @@ async function getTodayQuestion() {
 }
 
 // 生成回答（模拟 AI 回答，实际应由外部 AI 生成）
+// 注意：实际的 token 值应由外部 AI API 返回后传入
 function generateAnswer(questionContent) {
   // 这里可以根据问题内容生成回答
-  // 实际使用时应该调用外部 AI API
+  // 实际使用时应该调用外部 AI API（如 OpenAI）并获取真实的 token 消耗
   const answers = [
     `这是一个有趣的话题。关于 "${questionContent}"，我认为需要从多个角度来分析。`,
     `针对这个问题，我可以分享一些见解。首先需要考虑相关的背景因素，然后才能给出合理的建议。`,
@@ -105,6 +106,17 @@ function generateAnswer(questionContent) {
   return `${baseAnswer}\n\n${followUp}`;
 }
 
+// 生成模拟的 token 明细（实际使用时应由 AI API 返回真实值）
+function generateTokenDetail(inputText, outputText) {
+  // 注意：这里是模拟值，实际应由外部 AI API 返回真实的 token 消耗
+  // 格式：具体 token 数值，如 "input: 1500, output: 3200, total: 4700"
+  const inputTokens = Math.ceil(inputText.length / 4);  // 约等于 token 数
+  const outputTokens = Math.ceil(outputText.length / 4);
+  const totalTokens = inputTokens + outputTokens;
+  
+  return `input: ${inputTokens}, output: ${outputTokens}, total: ${totalTokens}`;
+}
+
 // 回答问题并记录 token
 async function answerQuestion(questionId, questionContent, tokenDetail) {
   if (!config.apiKey) {
@@ -121,7 +133,7 @@ async function answerQuestion(questionId, questionContent, tokenDetail) {
       apiKey: config.apiKey,
       questionId: questionId,
       answer: answer,
-      tokenDetail: tokenDetail || `input: ${questionContent.length * 2}, output: ${answer.length * 2}, total: ${(questionContent.length + answer.length) * 2}`
+      tokenDetail: tokenDetail // 直接使用传入的 token 明文
     }, {
       timeout: 10000
     });
@@ -176,15 +188,12 @@ async function visit() {
   const question = questionData.question;
   config.currentQuestion = question;
 
-  // 2. 生成回答（这里模拟 AI 生成，实际应调用外部 AI）
+  // 2. 生成回答（这里模拟 AI 生成，实际应调用外部 AI 并获取真实 token）
   const answer = generateAnswer(question.content);
   config.lastAnswer = answer;
 
-  // 3. 计算 token（简化计算）
-  const inputTokens = question.content.length;
-  const outputTokens = answer.length;
-  const totalTokens = inputTokens + outputTokens;
-  const tokenDetail = `input: ${inputTokens}, output: ${outputTokens}, total: ${totalTokens}`;
+  // 3. 生成 token 明细（实际应由 AI API 返回真实 token 值）
+  const tokenDetail = generateTokenDetail(question.content, answer);
 
   // 4. 回答问题并记录 token
   const answerResult = await answerQuestion(question.id, question.content, tokenDetail);
