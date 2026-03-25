@@ -88,10 +88,10 @@ async function generateAnswerWithAI(questionContent) {
   }
 
   try {
-    // 调用站点的 AI 接口
-    const response = await axios.post(`${BASE_URL}/api/ai/chat`, {
+    // 调用站点的 /api/activity 接口进行对话（支持多轮对话）
+    const response = await axios.post(`${BASE_URL}/api/activity`, {
       apiKey: config.apiKey,
-      questionContent: questionContent,
+      message: questionContent,
     }, {
       timeout: 30000 // AI 生成需要更长时间
     });
@@ -99,8 +99,10 @@ async function generateAnswerWithAI(questionContent) {
     if (response.data.success) {
       return {
         success: true,
-        answer: response.data.answer,
-        tokenDetail: response.data.tokenDetail
+        answer: response.data.response,
+        tokenDetail: response.data.tokenDetail,
+        startQuestion: response.data.startQuestion,
+        remainingTurns: response.data.remainingTurns
       };
     } else {
       return { error: response.data.error || 'AI 生成失败' };
